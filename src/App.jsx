@@ -1,35 +1,93 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useRef } from "react";
+import Login from "./components/Login";
+import PlayerBar from "./components/PlayerBar";
+import { MobileNav, Sidebar, Toasts, TopBar } from "./components/Shell";
+import SidePanel from "./components/SidePanels";
+import { useSession, useStreamTokenRefresh } from "./lib/hooks";
+import { library } from "./lib/library";
+import { player } from "./lib/player";
+import { useRoute } from "./lib/router";
+import { AlbumView, Albums, ArtistView, Artists, Favorites } from "./views/Albums";
+import Downloads from "./views/Downloads";
+import Home from "./views/Home";
+import { PlaylistView, Playlists, Recent } from "./views/Playlists";
+import Search from "./views/Search";
+import Settings from "./views/Settings";
+import Songs from "./views/Songs";
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+function View() {
+  const { section, params } = useRoute();
+  switch (section) {
+    case "songs": return <Songs />;
+    case "albums": return <Albums />;
+    case "album": return <AlbumView id={params[0]} />;
+    case "artists": return <Artists />;
+    case "artist": return <ArtistView id={params[0]} />;
+    case "favorites": return <Favorites />;
+    case "playlists": return <Playlists />;
+    case "playlist": return <PlaylistView id={params[0]} />;
+    case "recent": return <Recent />;
+    case "search": return <Search query={params[0] ?? ""} />;
+    case "downloads": return <Downloads />;
+    case "settings": return <Settings />;
+    default: return <Home />;
+  }
 }
 
-export default App
+function Authenticated() {
+  const { path } = useRoute();
+  const mainRef = useRef(null);
+  const footerRef = useRef(null);
+  useStreamTokenRefresh();
+
+  useEffect(() => {
+    player.onPlayed = (id) => library.recordPlay(id);
+    library.load().then((tracks) => tracks && player.restore(tracks));
+    const reload = () => library.load();
+    window.addEventListener("online", reload);
+    return () => {
+      window.removeEventListener("online", reload);
+      player.onPlayed = null;
+    };
+  }, []);
+
+  // New page → start at the top.
+  useEffect(() => {
+    if (!path.startsWith("/search")) mainRef.current?.scrollTo(0, 0);
+  }, [path]);
+
+  // Expose the footer height so overlay panels on small screens stop above it.
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty("--player-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div className="flex h-dvh flex-col bg-surface-0">
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-5 md:px-6">
+            <View />
+          </main>
+        </div>
+        <SidePanel />
+      </div>
+      <footer ref={footerRef}>
+        <PlayerBar />
+        <MobileNav />
+      </footer>
+      <Toasts />
+    </div>
+  );
+}
+
+export default function App() {
+  const session = useSession();
+  // Keyed by user so logging in as someone else starts from a clean tree.
+  return session ? <Authenticated key={session.user.id} /> : <Login />;
+}

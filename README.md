@@ -1,12 +1,16 @@
-# React + Vite
+# AngelStream — frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite + Tailwind client for the lossless streaming server in `../lossless-stream-backend`
+(see that README for the full setup and production deployment).
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run dev     # http://localhost:5173, proxies /api to http://localhost:8000
+npm run build   # dist/ is served by the backend in production
+npm run lint
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript and enable type-aware lint rules. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `src/lib/player.js` — two-deck playback engine (preloading, error/stall recovery, ReplayGain, Media Session)
+- `src/lib/api.js` — API client, session and stream-token handling
+- `VITE_API_BASE` — set only if the API is on a different origin than the app
+- Keys: Space play/pause · ←/→ seek 10 s · Shift+←/→ prev/next · M mute
