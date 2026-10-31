@@ -3,6 +3,7 @@ import Login from "./components/Login";
 import PlayerBar from "./components/PlayerBar";
 import { MobileNav, Sidebar, Toasts, TopBar } from "./components/Shell";
 import SidePanel from "./components/SidePanels";
+import { api, auth } from "./lib/api";
 import { useSession, useStreamTokenRefresh } from "./lib/hooks";
 import { library } from "./lib/library";
 import { player } from "./lib/player";
@@ -10,10 +11,13 @@ import { useRoute } from "./lib/router";
 import { AlbumView, Albums, ArtistView, Artists, Favorites } from "./views/Albums";
 import Downloads from "./views/Downloads";
 import Home from "./views/Home";
+import { MixView } from "./views/Mixes";
 import { PlaylistView, Playlists, Recent } from "./views/Playlists";
 import Search from "./views/Search";
+import Review from "./views/Review";
 import Settings from "./views/Settings";
 import Songs from "./views/Songs";
+import Upload from "./views/Upload";
 
 function View() {
   const { section, params } = useRoute();
@@ -27,9 +31,12 @@ function View() {
     case "playlists": return <Playlists />;
     case "playlist": return <PlaylistView id={params[0]} />;
     case "recent": return <Recent />;
+    case "mix": return <MixView id={params[0]} />;
     case "search": return <Search query={params[0] ?? ""} />;
     case "downloads": return <Downloads />;
     case "settings": return <Settings />;
+    case "upload": return <Upload />;
+    case "review": return <Review />;
     default: return <Home />;
   }
 }
@@ -42,6 +49,8 @@ function Authenticated() {
 
   useEffect(() => {
     player.onPlayed = (id) => library.recordPlay(id);
+    // Roles can change while a session is open (e.g. an admin grants upload access).
+    api("/api/auth/me").then((user) => auth.updateUser(user)).catch(() => {});
     library.load().then((tracks) => tracks && player.restore(tracks));
     const reload = () => library.load();
     window.addEventListener("online", reload);

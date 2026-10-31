@@ -15,9 +15,19 @@ export class ApiError extends Error {
 function readSession() {
   try {
     const s = JSON.parse(localStorage.getItem(SESSION_KEY));
-    return s && s.expires_at > Date.now() ? s : null;
+    // An expired access token is fine: the refresh token renews it on the first request.
+    return s && (s.refresh_token || s.expires_at > Date.now()) ? s : null;
   } catch {
     return null;
+  }
+}
+
+function persist() {
+  try {
+    if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // storage unavailable (private mode); session lives in memory only
   }
 }
 
@@ -35,26 +45,69 @@ export const auth = {
     session = data && {
       access_token: data.access_token,
       expires_at: Date.now() + data.expires_in * 1000,
+      refresh_token: data.refresh_token,
       user: data.user,
     };
-    try {
-      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      else localStorage.removeItem(SESSION_KEY);
-    } catch {
-      // storage unavailable (private mode); session lives in memory only
-    }
+    persist();
     streamToken.clear();
     listeners.forEach((fn) => fn(session));
   },
+  /** Refresh the stored user (roles can change while a session is open). */
+  updateUser(user) {
+    if (!session) return;
+    session = { ...session, user };
+    persist();
+    listeners.forEach((fn) => fn(session));
+  },
   logout() {
+    // Revoke this device's refresh token on the server; sign out locally either way.
+    const token = session?.access_token;
+    if (token) fetch(`${API_BASE}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
     auth.set(null);
   },
 };
 
-export async function api(path, { method = "GET", body, signal } = {}) {
+let refreshing = null;
+
+/** Swap the refresh token for new tokens. Concurrent callers share one request. */
+function refreshSession() {
+  if (!session?.refresh_token) return Promise.resolve(false);
+  refreshing ??= fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  })
+    .then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        session = { ...session, access_token: data.access_token, expires_at: Date.now() + data.expires_in * 1000,
+          refresh_token: data.refresh_token, user: data.user };
+        persist();
+        listeners.forEach((fn) => fn(session));
+        return true;
+      }
+      if (res.status === 401) auth.set(null); // revoked or expired: sign in again
+      return false;
+    })
+    .catch(() => false) // offline: keep the session and try again later
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+/** A usable access token, renewed first if it expires within a minute. */
+export async function accessToken() {
+  if (session?.refresh_token && session.expires_at - Date.now() < 60_000) await refreshSession();
+  return session?.access_token ?? null;
+}
+
+export async function api(path, { method = "GET", body, signal, retried = false } = {}) {
   const headers = {};
+  const isAuthCall = path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register");
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (session) headers.Authorization = `Bearer ${session.access_token}`;
+  const token = isAuthCall ? null : await accessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
   try {
@@ -71,7 +124,11 @@ export async function api(path, { method = "GET", body, signal } = {}) {
 
   const data = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
-    if (res.status === 401 && session && !path.startsWith("/api/auth/login")) auth.logout();
+    if (res.status === 401 && session && !isAuthCall) {
+      // The access token was rejected early (e.g. server restart with a new key): refresh once.
+      if (!retried && (await refreshSession())) return api(path, { method, body, signal, retried: true });
+      auth.set(null);
+    }
     const detail = data?.detail;
     const message = Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : detail;
     throw new ApiError(res.status, message || `Request failed (${res.status})`);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-function Modal({ title, children, onClose }) {
+export function Modal({ title, children, onClose, wide = false }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -14,7 +14,7 @@ function Modal({ title, children, onClose }) {
         aria-modal="true"
         aria-label={title}
         onPointerDown={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-xl border border-line bg-surface-1 p-5 shadow-2xl"
+        className={`w-full ${wide ? "max-w-lg" : "max-w-sm"} max-h-[90dvh] overflow-y-auto rounded-xl border border-line bg-surface-1 p-5 shadow-2xl`}
       >
         <h2 className="mb-3 text-base font-semibold">{title}</h2>
         {children}
@@ -64,7 +64,7 @@ function ConfirmDialog({ title, message, confirmLabel = "Delete", onDone }) {
 }
 
 // Imperative helpers: `const name = await prompt({...})` keeps call sites simple.
-function mount(render) {
+export function mount(render) {
   return new Promise((resolve) => {
     const host = document.createElement("div");
     document.body.appendChild(host);

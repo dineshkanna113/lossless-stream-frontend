@@ -1,14 +1,17 @@
-import { API_BASE, streamToken } from "../lib/api";
+import { api, API_BASE, streamToken } from "../lib/api";
+import { useSession } from "../lib/hooks";
 import { library, useLibrary, useOffline } from "../lib/library";
+import { buildRadio } from "../lib/mixes";
 import { offline, offlineSupported } from "../lib/offline";
 import { player } from "../lib/player";
 import { navigate } from "../lib/router";
 import { toast, toastError } from "../lib/toast";
-import { promptDialog } from "./Dialog";
+import { confirmDialog, promptDialog } from "./Dialog";
 import {
   AlbumIcon, ArtistIcon, DownloadIcon, HeartIcon, HeartOutlineIcon, MoreIcon, OfflineIcon, PlaylistIcon, PlusIcon,
-  QueueIcon, TrashIcon,
+  QueueIcon, RadioIcon, TrashIcon,
 } from "./Icons";
+import { playable } from "./Grid";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "./Menu";
 
 export async function newPlaylistWith(tracks) {
@@ -63,12 +66,29 @@ export function AddToPlaylistItems({ tracks, close }) {
   );
 }
 
+async function takeDown(track) {
+  const ok = await confirmDialog({
+    title: `Remove “${track.title}” from the library?`,
+    message: "It disappears for every user, including from playlists. The file is kept in the server's removed folder so it can be restored.",
+    confirmLabel: "Remove",
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/tracks/${track.id}`, { method: "DELETE" });
+    toast(`Removed ${track.title}`);
+    library.load();
+  } catch (err) {
+    toastError(err);
+  }
+}
+
 export default function TrackMenu({ track, onRemove, removeLabel = "Remove from playlist" }) {
-  const { byId, offlineMode } = useLibrary();
+  const { byId, tracks, offlineMode } = useLibrary();
   const { ids: offlineIds, progress } = useOffline();
   const live = byId.get(track.id) ?? track;
   const saved = offlineIds.has(track.id);
   const saving = track.id in progress;
+  const isAdmin = useSession()?.user?.is_admin;
 
   return (
     <Menu
@@ -83,6 +103,13 @@ export default function TrackMenu({ track, onRemove, removeLabel = "Remove from 
           </MenuItem>
           <MenuItem icon={QueueIcon} close={close} onSelect={() => { player.addToQueue([track]); toast("Added to queue"); }}>
             Add to queue
+          </MenuItem>
+          <MenuItem icon={RadioIcon} close={close} onSelect={() => {
+            if (player.getSnapshot().shuffle) player.toggleShuffle();
+            player.playQueue(buildRadio(live, playable(tracks ?? [], offlineMode, offlineIds)), 0);
+            toast(`Playing ${track.title} radio`);
+          }}>
+            Start radio
           </MenuItem>
           <MenuItem
             icon={live.favorite ? HeartIcon : HeartOutlineIcon}
@@ -117,6 +144,12 @@ export default function TrackMenu({ track, onRemove, removeLabel = "Remove from 
             <>
               <MenuSeparator />
               <AddToPlaylistItems tracks={[track]} close={close} />
+            </>
+          )}
+          {isAdmin && !offlineMode && (
+            <>
+              <MenuSeparator />
+              <MenuItem icon={TrashIcon} close={close} danger onSelect={() => takeDown(track)}>Remove from library…</MenuItem>
             </>
           )}
         </>

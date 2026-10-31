@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { confirmDialog, promptDialog } from "../components/Dialog";
 import { PageHeader } from "../components/Grid";
 import { TrashIcon, UploadIcon } from "../components/Icons";
 import { api, API_BASE, auth } from "../lib/api";
+import { href } from "../lib/router";
 import { usePlayer, useSession } from "../lib/hooks";
 import { library } from "../lib/library";
 import { player } from "../lib/player";
@@ -93,6 +94,38 @@ function OutputDevice() {
   );
 }
 
+function Devices() {
+  const [sessions, setSessions] = useState(null);
+  const load = () => api("/api/auth/sessions").then((d) => setSessions(d.sessions)).catch(toastError);
+  useEffect(() => {
+    load();
+  }, []);
+  const revoke = async (s) => {
+    try {
+      await api(`/api/auth/sessions/${s.id}`, { method: "DELETE" });
+      toast("Signed out that device");
+      load();
+    } catch (err) {
+      toastError(err);
+    }
+  };
+  const when = (t) => new Date(`${t.replace(" ", "T")}Z`).toLocaleString();
+  if (!sessions) return null;
+  return (
+    <ul className="mb-4 divide-y divide-line">
+      {sessions.map((s) => (
+        <li key={s.id} className="flex items-center gap-3 py-2 text-sm">
+          <div className="min-w-0 flex-1">
+            <p className="truncate">{s.device || "Unknown device"}{s.current && <span className="ml-2 text-xs text-accent">This device</span>}</p>
+            <p className="text-xs text-muted">Last active {when(s.last_used_at)}</p>
+          </div>
+          {!s.current && <button type="button" className="btn-ghost text-xs" onClick={() => revoke(s)}>Sign out</button>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function SubsonicCard({ username }) {
   const [password, setPassword] = useState(undefined);
   const [shown, setShown] = useState(false);
@@ -147,41 +180,6 @@ function SubsonicCard({ username }) {
 }
 
 function LibraryAdmin() {
-  const [upload, setUpload] = useState(null); // { name, pct }
-  const [dragging, setDragging] = useState(false);
-  const input = useRef(null);
-
-  const send = (files) => {
-    if (!files.length) return;
-    const form = new FormData();
-    [...files].forEach((f) => form.append("files", f));
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE}/api/library/upload`);
-    xhr.setRequestHeader("Authorization", `Bearer ${auth.session.access_token}`);
-    xhr.upload.onprogress = (e) => e.lengthComputable && setUpload({ count: files.length, pct: e.loaded / e.total });
-    xhr.onload = () => {
-      setUpload(null);
-      let body = null;
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        // non-JSON error page
-      }
-      if (xhr.status >= 200 && xhr.status < 300) {
-        toast(`Uploaded ${body.saved.length} file(s); ${body.scan.added} new track(s) added`);
-        library.load();
-      } else {
-        toastError(new Error(body?.detail || `Upload failed (${xhr.status})`));
-      }
-    };
-    xhr.onerror = () => {
-      setUpload(null);
-      toastError(new Error("Upload failed: connection lost"));
-    };
-    setUpload({ count: files.length, pct: 0 });
-    xhr.send(form);
-  };
-
   const rescan = async () => {
     await api("/api/library/rescan", { method: "POST" }).catch(toastError);
     toast("Rescanning library…");
@@ -189,35 +187,23 @@ function LibraryAdmin() {
   };
 
   return (
-    <Card title="Library" description="FLAC, WAV, AIFF, ALAC/AAC (.m4a), MP3, Ogg and Opus files are indexed from their tags. Add folders on the server, or upload here.">
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); send(e.dataTransfer.files); }}
-        className={`grid place-items-center rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors ${dragging ? "border-accent bg-accent/5" : "border-line"}`}
-      >
-        {upload ? (
-          <div className="w-full max-w-xs">
-            <p className="mb-2">Uploading {upload.count} file(s)… {Math.round(upload.pct * 100)}%</p>
-            <div className="h-1.5 overflow-hidden rounded-full bg-surface-3"><div className="h-full bg-accent" style={{ width: `${upload.pct * 100}%` }} /></div>
-          </div>
-        ) : (
-          <>
-            <UploadIcon className="mb-2 h-6 w-6 text-muted" />
-            <p>Drop audio files here, or <button type="button" className="text-accent underline" onClick={() => input.current.click()}>browse</button></p>
-            <input ref={input} type="file" multiple accept=".flac,.wav,.aif,.aiff,.m4a,.mp3,.ogg,.opus,audio/*" className="hidden"
-              onChange={(e) => { send(e.target.files); e.target.value = ""; }} />
-          </>
-        )}
+    <Card title="Library" description="FLAC, WAV, AIFF, ALAC/AAC (.m4a), MP3, Ogg and Opus files are indexed from their tags. Files copied into the library folder on the server appear after a rescan; uploads go through checks and review first.">
+      <div className="flex flex-wrap gap-2">
+        <a className="btn-primary flex items-center gap-1.5" href={href("upload")}><UploadIcon className="h-4 w-4" /> Upload music</a>
+        <a className="btn-secondary" href={href("review")}>Review queue</a>
+        <button type="button" className="btn-ghost" onClick={rescan}>Rescan library folder</button>
       </div>
-      <button type="button" className="btn-ghost mt-3" onClick={rescan}>Rescan library folder</button>
     </Card>
   );
 }
 
+const ROLES = [["listener", "Listener"], ["uploader", "Uploader"], ["admin", "Admin"]];
+const roleOf = (u) => (u.is_admin ? "admin" : u.can_upload ? "uploader" : "listener");
+const roleBody = (role) => ({ is_admin: role === "admin", can_upload: role !== "listener" });
+
 function UsersAdmin({ me }) {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ username: "", password: "", is_admin: false });
+  const [form, setForm] = useState({ username: "", password: "", role: "listener" });
   const load = () => api("/api/users").then((d) => setUsers(d.users)).catch(toastError);
   useEffect(() => {
     load();
@@ -226,9 +212,9 @@ function UsersAdmin({ me }) {
   const create = async (e) => {
     e.preventDefault();
     try {
-      await api("/api/users", { method: "POST", body: form });
+      await api("/api/users", { method: "POST", body: { username: form.username, password: form.password, ...roleBody(form.role) } });
       toast(`Created ${form.username}`);
-      setForm({ username: "", password: "", is_admin: false });
+      setForm({ username: "", password: "", role: "listener" });
       load();
     } catch (err) {
       toastError(err);
@@ -254,16 +240,16 @@ function UsersAdmin({ me }) {
   };
 
   return (
-    <Card title="Users" description="Everyone shares the library; favorites, playlists and history are private per user.">
+    <Card title="Users" description="Everyone shares the library; favorites, playlists and history are private per user. Uploaders can submit music, which an admin reviews before it goes live.">
       <ul className="mb-4 divide-y divide-line">
         {users.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
             <span className="min-w-0 flex-1 truncate font-medium">{u.username}{u.id === me.id && <span className="ml-2 text-xs text-muted">(you)</span>}</span>
-            <label className="flex items-center gap-1.5 text-xs text-muted">
-              <input type="checkbox" checked={u.is_admin} disabled={u.id === me.id}
-                onChange={(e) => patch(u, { is_admin: e.target.checked }, `${u.username} is ${e.target.checked ? "now" : "no longer"} an admin`)} />
-              Admin
-            </label>
+            <select aria-label={`Role for ${u.username}`} value={roleOf(u)} disabled={u.id === me.id}
+              onChange={(e) => patch(u, roleBody(e.target.value), `${u.username} is now ${ROLES.find(([r]) => r === e.target.value)[1].toLowerCase()}`)}
+              className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs">
+              {ROLES.map(([r, label]) => <option key={r} value={r}>{label}</option>)}
+            </select>
             <button type="button" className="btn-ghost text-xs" onClick={() => resetPassword(u)}>Reset password</button>
             {u.id !== me.id && (
               <button type="button" className="grid h-8 w-8 place-items-center text-muted hover:text-danger" aria-label={`Delete ${u.username}`} onClick={() => remove(u)}>
@@ -278,9 +264,10 @@ function UsersAdmin({ me }) {
           pattern="[A-Za-z0-9_.\-]+" onChange={(e) => setForm({ ...form, username: e.target.value })} />
         <input className="input w-48" type="password" autoComplete="new-password" placeholder="Password" value={form.password}
           required minLength={8} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-        <label className="flex items-center gap-1.5 text-xs text-muted">
-          <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} /> Admin
-        </label>
+        <select aria-label="Role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
+          className="rounded-md border border-line bg-surface-2 px-2 py-2 text-xs">
+          {ROLES.map(([r, label]) => <option key={r} value={r}>{label}</option>)}
+        </select>
         <button className="btn-primary">Add user</button>
       </form>
     </Card>
@@ -334,6 +321,9 @@ export default function Settings() {
         </div>
       </Card>
       <SubsonicCard username={user.username} />
+      <Card title="Signed-in devices" description="Phones, browsers and apps signed in to your account.">
+        <Devices />
+      </Card>
       <Card title="Account">
         <PasswordForm />
         <button type="button" className="btn-ghost mt-4" onClick={logoutAll}>Sign out of all devices</button>

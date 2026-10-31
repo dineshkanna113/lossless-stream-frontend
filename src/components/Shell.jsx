@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { auth } from "../lib/api";
+import { api, auth } from "../lib/api";
 import { useSession } from "../lib/hooks";
 import { library, useLibrary } from "../lib/library";
 import { player } from "../lib/player";
 import { href, navigate, useRoute } from "../lib/router";
 import { useToasts } from "../lib/toast";
 import {
-  AlbumIcon, ArtistIcon, HeartIcon, HomeIcon, OfflineIcon, PlaylistIcon, PlusIcon, SearchIcon, SettingsIcon, SongsIcon,
-  WaveIcon,
+  AlbumIcon, ArtistIcon, CheckIcon, HeartIcon, HomeIcon, OfflineIcon, PlaylistIcon, PlusIcon, SearchIcon, SettingsIcon,
+  SongsIcon, UploadIcon, WaveIcon,
 } from "./Icons";
 import { Menu, MenuItem } from "./Menu";
 import { newPlaylistWith } from "./TrackMenu";
@@ -22,7 +22,21 @@ const NAV = [
   ["downloads", "Downloads", OfflineIcon],
 ];
 
-function NavLink({ to, label, icon: Icon, active, compact = false }) {
+/** Pending-review count for the admin badge, refreshed every minute and on navigation. */
+function usePendingCount(enabled, section) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const load = () => api("/api/uploads?scope=all&status=pending&limit=1")
+      .then((d) => setCount(d.counts.pending ?? 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [enabled, section]);
+  return count;
+}
+
+function NavLink({ to, label, icon: Icon, active, compact = false, badge = 0 }) {
   return (
     <a
       href={href(...(to ? [to] : []))}
@@ -37,6 +51,7 @@ function NavLink({ to, label, icon: Icon, active, compact = false }) {
     >
       <Icon className={compact ? "h-5 w-5" : "h-4 w-4"} />
       {label}
+      {badge > 0 && <span className="ml-auto rounded-full bg-gold/20 px-1.5 text-[10px] font-semibold text-gold">{badge}</span>}
     </a>
   );
 }
@@ -44,6 +59,8 @@ function NavLink({ to, label, icon: Icon, active, compact = false }) {
 export function Sidebar() {
   const { section, params } = useRoute();
   const { playlists } = useLibrary();
+  const user = useSession()?.user;
+  const pending = usePendingCount(user?.is_admin, section);
   useEffect(() => {
     library.loadPlaylists();
   }, []);
@@ -56,6 +73,8 @@ export function Sidebar() {
       {NAV.map(([to, label, Icon]) => (
         <NavLink key={to} to={to} label={label} icon={Icon} active={section === to} />
       ))}
+      {user?.can_upload && <NavLink to="upload" label="Upload" icon={UploadIcon} active={section === "upload"} />}
+      {user?.is_admin && <NavLink to="review" label="Review" icon={CheckIcon} active={section === "review"} badge={pending} />}
       <div className="mt-5 flex items-center justify-between px-3">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Your playlists</span>
         <button type="button" aria-label="New playlist" onClick={() => newPlaylistWith([])}
@@ -144,6 +163,8 @@ export function TopBar() {
               <div className="px-3 py-2 text-xs text-muted">Signed in as <span className="text-fg">{session?.user?.username}</span></div>
               <MenuItem icon={SettingsIcon} close={close} onSelect={() => navigate("settings")}>Settings</MenuItem>
               <MenuItem icon={SongsIcon} close={close} onSelect={() => navigate("recent")}>Recently played</MenuItem>
+              {session?.user?.can_upload && <MenuItem icon={UploadIcon} close={close} onSelect={() => navigate("upload")}>Upload music</MenuItem>}
+              {session?.user?.is_admin && <MenuItem icon={CheckIcon} close={close} onSelect={() => navigate("review")}>Review uploads</MenuItem>}
               <MenuItem close={close} onSelect={() => { player.reset(); library.reset(); auth.logout(); }}>Sign out</MenuItem>
             </>
           )}

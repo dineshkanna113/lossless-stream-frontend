@@ -14,7 +14,7 @@ export default function Login() {
     api("/api/auth/status")
       .then((s) => {
         setStatus(s);
-        if (!s.has_users) setMode("register");
+        if (!s.has_users && s.registration_open) setMode("register");
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -33,7 +33,9 @@ export default function Login() {
     }
   };
 
-  const firstRun = status && !status.has_users;
+  const firstRun = status && !status.has_users && status.registration_open;
+  // A production server with no users yet: the admin is created on the server itself.
+  const awaitingAdmin = status && !status.has_users && !status.registration_open;
 
   return (
     <main className="grid min-h-dvh place-items-center bg-surface-0 px-4">
@@ -43,7 +45,9 @@ export default function Login() {
           <h1 className="text-lg font-semibold tracking-tight">AngelStream</h1>
         </div>
         <p className="text-sm text-muted">
-          {firstRun
+          {awaitingAdmin
+            ? "This server has no accounts yet. Create the admin on the server with: python -m app.manage create-user <name> --admin"
+            : firstRun
             ? "Create the admin account for this server."
             : mode === "login"
               ? "Sign in to your library."
