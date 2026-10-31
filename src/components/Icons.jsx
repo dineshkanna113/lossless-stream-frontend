@@ -37,4 +37,5 @@ export const DragIcon = (p) => <Svg {...p}><path d="M8 5h2v2H8zm6 0h2v2h-2zM8 11
 export const UpIcon = (p) => <Svg {...p}><path d="m12 7 6 6-1.4 1.4-4.6-4.6-4.6 4.6L6 13l6-6Z" /></Svg>;
 export const DownIcon = (p) => <Svg {...p}><path d="m12 17-6-6 1.4-1.4 4.6 4.6 4.6-4.6L18 11l-6 6Z" /></Svg>;
 export const SpeakerIcon = (p) => <Svg {...p}><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm5 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" /></Svg>;
+export const RadioIcon = (p) => <Svg {...p}><path d="M12 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM7.05 7.05l1.41 1.41a5 5 0 0 0 0 7.08l-1.41 1.41a7 7 0 0 1 0-9.9Zm9.9 0a7 7 0 0 1 0 9.9l-1.41-1.41a5 5 0 0 0 0-7.08l1.41-1.41ZM4.22 4.22l1.42 1.42a9 9 0 0 0 0 12.72l-1.42 1.42a11 11 0 0 1 0-15.56Zm15.56 0a11 11 0 0 1 0 15.56l-1.42-1.42a9 9 0 0 0 0-12.72l1.42-1.42Z" /></Svg>;
 export const UploadIcon = (p) => <Svg {...p}><path d="M11 16h2V7.8l3.3 3.3 1.4-1.4L12 4 6.3 9.7l1.4 1.4L11 7.8V16Zm-6 2h14v2H5v-2Z" /></Svg>;

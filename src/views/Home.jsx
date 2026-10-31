@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlbumGrid, Section } from "../components/Grid";
+import MixGrid from "../components/MixGrid";
 import TrackList from "../components/TrackList";
 import { api } from "../lib/api";
 import { useLibrary } from "../lib/library";
+import { useMixes } from "../lib/mixes";
 import { href } from "../lib/router";
 
 export default function Home() {
   const { albums, tracks, offlineMode } = useLibrary();
   const [recent, setRecent] = useState(null);
+  const mixes = useMixes();
 
   useEffect(() => {
     if (offlineMode) return;
@@ -33,6 +36,11 @@ export default function Home() {
         <p className="mb-6 rounded-md bg-gold/10 px-3 py-2 text-sm text-gold">
           You're offline. Only tracks saved for offline are playable. <a className="underline" href={href("downloads")}>See downloads</a>
         </p>
+      )}
+      {mixes.length > 0 && (
+        <Section title="Made for you">
+          <MixGrid mixes={mixes} />
+        </Section>
       )}
       {recent?.length > 0 && (
         <Section title="Recently played" action={<a className="text-xs text-muted hover:text-fg" href={href("recent")}>Show all</a>}>
